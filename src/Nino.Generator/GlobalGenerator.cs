@@ -289,14 +289,39 @@ public class GlobalGenerator : IIncrementalGenerator
             }
             catch (Exception e)
             {
-                // Report but don't fail completely - let build succeed
+                // Report but don't fail completely - let build succeed.
+                // ETMMO: include exception type + full ToString() so NINO998 is actionable
+                // (historically only e.Message appeared, hiding KeyNotFoundException stack).
+                var detail = FormatGeneratorException(e);
                 spc.ReportDiagnostic(Diagnostic.Create(
                     new DiagnosticDescriptor("NINO998", "Nino Generator Warning",
-                        $"Generator encountered issue but continuing: {e.Message}",
+                        $"Generator encountered issue but continuing: {e.GetType().Name}: {e.Message}",
                         "Nino.Generator",
-                        DiagnosticSeverity.Warning, true), Location.None));
+                        DiagnosticSeverity.Warning, true,
+                        description: detail), Location.None));
+                try
+                {
+                    spc.AddSource("NinoGlobal.Error.g.cs",
+                        $"/*\nNINO998 GlobalGenerator failure\n{detail}\n*/");
+                }
+                catch
+                {
+                    // ignore secondary failures while reporting
+                }
             }
         });
+    }
+
+    private static string FormatGeneratorException(Exception ex)
+    {
+        try
+        {
+            return ex.ToString();
+        }
+        catch
+        {
+            return $"{ex.GetType().FullName}: {ex.Message}\n{ex.StackTrace}";
+        }
     }
 
     private static void ExecuteGenerator<T>(T generator, SourceProductionContext spc) where T : NinoGenerator
@@ -308,6 +333,7 @@ public class GlobalGenerator : IIncrementalGenerator
         }
         catch (Exception ex)
         {
+            var detail = FormatGeneratorException(ex);
             // Report specific generator failure with details
             spc.ReportDiagnostic(Diagnostic.Create(
                 new DiagnosticDescriptor("NINO999",
@@ -316,7 +342,7 @@ public class GlobalGenerator : IIncrementalGenerator
                     "Nino.Generator",
                     DiagnosticSeverity.Warning,
                     true,
-                    description: $"Stack trace: {ex.StackTrace}"),
+                    description: detail),
                 Location.None));
 
             // Also add a comment in generated code for debugging
@@ -326,7 +352,7 @@ public class GlobalGenerator : IIncrementalGenerator
 Error: {ex.GetType().Name}: {ex.Message}
 
 Stack Trace:
-{ex.StackTrace}
+{detail}
 
 This error has been logged as a warning and other generators will continue.
 */");

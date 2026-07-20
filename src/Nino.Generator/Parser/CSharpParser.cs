@@ -338,11 +338,19 @@ public class CSharpParser(HashSet<ITypeSymbol> ninoSymbols) : NinoTypeParser
                         return string.Compare(aName, bName, StringComparison.Ordinal);
                     });
                     //sort by index
+                    // ETMMO: never throw KeyNotFoundException from Sort (surfaces as NINO998
+                    // "key not present in dictionary" when memberIndex/order are incomplete).
                     ninoMembers.Sort((a, b) =>
                     {
                         var aName = a.Name;
                         var bName = b.Name;
-                        return memberIndex[aName].CompareTo(memberIndex[bName]);
+                        var aHas = memberIndex.TryGetValue(aName, out var aIdx);
+                        var bHas = memberIndex.TryGetValue(bName, out var bIdx);
+                        if (aHas && bHas)
+                            return aIdx.CompareTo(bIdx);
+                        if (aHas != bHas)
+                            return aHas ? -1 : 1;
+                        return string.Compare(aName, bName, StringComparison.Ordinal);
                     });
 
                     if (order.Count > 0)
@@ -351,7 +359,15 @@ public class CSharpParser(HashSet<ITypeSymbol> ninoSymbols) : NinoTypeParser
                         {
                             var aName = a.Name;
                             var bName = b.Name;
-                            return order[aName].CompareTo(order[bName]);
+                            var aHas = order.TryGetValue(aName, out var aOrd);
+                            var bHas = order.TryGetValue(bName, out var bOrd);
+                            if (aHas && bHas)
+                                return aOrd.CompareTo(bOrd);
+                            // Members missing from NinoExplicitOrder keep relative order by name
+                            // instead of aborting the entire generator pass.
+                            if (aHas != bHas)
+                                return aHas ? -1 : 1;
+                            return string.Compare(aName, bName, StringComparison.Ordinal);
                         });
                     }
 
